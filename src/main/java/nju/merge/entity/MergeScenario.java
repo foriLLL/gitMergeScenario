@@ -53,19 +53,19 @@ public class MergeScenario {
         File rF = new File(rPath);
         if (baseF.exists() && bF.exists() && aF.exists() && rF.exists()) {
             write(PathUtils.getFileWithPathSegment(absPath, count + "_merged" + suffix), this.ours);
-            ProcessBuilder pb2 = new ProcessBuilder(
-                    "git",
-                    "merge-file",
-                    "--diff3",
-                    PathUtils.getFileWithPathSegment(absPath, count + "_merged" + suffix),
-                    basePath,
-                    bPath
-            );
-            try {
-                pb2.start().waitFor();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+            // ProcessBuilder pb2 = new ProcessBuilder(
+            //         "git",
+            //         "merge-file",
+            //         "--diff3",
+            //         PathUtils.getFileWithPathSegment(absPath, count + "_merged" + suffix),
+            //         basePath,
+            //         bPath
+            // );
+            // try {
+            //     pb2.start().waitFor();
+            // } catch (InterruptedException e) {
+            //     e.printStackTrace();
+            // }
         }
         count++;
     }

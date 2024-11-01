@@ -5,5 +5,7 @@
 /repos/
 /logs/
 /gitMergeScenario.iml
+.vscode/
 # MacOS
 .DS_Store
+collect_output

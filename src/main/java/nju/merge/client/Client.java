@@ -15,9 +15,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class Client {
 
@@ -27,6 +25,24 @@ public class Client {
     private static String outputDir = workdir + "/output";
     private static String repoList = workdir + "/list.txt";
     private static Logger logger = LoggerFactory.getLogger(Client.class);
+    public static final Set<String> allowedExtensions = new HashSet<>(Arrays.asList(
+            "py",    // Python
+            "js",    // JavaScript
+            "ts",    // TypeScript
+            "go",    // Go
+            "java",  // Java
+            "cpp",   // C++
+            "c",     // C
+            "h",     // C Header
+            "hpp",   // C++ Header
+            "rb",    // Ruby
+            "php",   // PHP
+            "cs",    // C#
+            "swift", // Swift
+            "rs",    // Rust
+            "m",     // Objective-C
+            "mm"     // Objective-C++
+    ));
 
     public static void addReposFromText(String txtPath, Map<String, String> repos) throws IOException {
         Path path = Paths.get(txtPath);
@@ -36,26 +52,17 @@ public class Client {
             repos.put(args[0].strip(), args[1].strip());
         });
     }
-
-    /**
-     * @Description
-     * @Param 第一个参数是123，第二个参数是filetype，第三个参数是工作目录, 第四个参数是
-     * @Return
-     **/
+    
     public static void main(String[] args) throws Exception{
         Options options = new Options();
         options.addOption("d", "workDir", true, "work directory");
-        options.addOption("f", "filetype", true, "file type");
         options.addOption("p", "projectPath", true, "projectPath");
         options.addOption("s", "status", true, "status");
         CommandLineParser parser = new DefaultParser();
-        String fileType = "java";
         String projectPath = "";
         String s = "1";
         CommandLine cmd = parser.parse(options, args);
-        if (cmd.hasOption("f")) {
-            fileType = cmd.getOptionValue("f");
-        }
+
         if (cmd.hasOption("p")) {
             projectPath = cmd.getOptionValue("p");
         }
@@ -68,12 +75,7 @@ public class Client {
         reposDir = workdir + "/repos";
         outputDir = workdir + "/output";
         repoList = workdir + "/list.txt";
-        String[] filetypes;
-        if(fileType.equals("cpp")){
-            filetypes = new String[]{".cpp", ".c", ".h", ".hpp"};
-        } else {
-            filetypes = new String[]{"." + fileType};
-        }
+
         Map<String, String> repos = new HashMap<>();
         if(projectPath.equals("")) {
             addReposFromText(repoList, repos);
@@ -83,14 +85,14 @@ public class Client {
         }
         String finalS = s;
         repos.forEach((projectName, url) -> {
-            String repoPath = PathUtils.getFileWithPathSegment(reposDir, projectName); // store the specific repo
-            String outputConflictPath = PathUtils.getFileWithPathSegment(outputDir, "conflictFiles");   // store all conflict files during collecting
-            String outputJsonPath = PathUtils.getFileWithPathSegment(outputDir, "mergeTuples"); // store output tuples
-            String filteredTuplePath = PathUtils.getFileWithPathSegment(outputDir, "filteredTuples"); // store filtered tuples
+            String repoPath = PathUtils.getFileWithPathSegment(reposDir, projectName);                      // store the specific repo
+            String outputConflictPath = PathUtils.getFileWithPathSegment(outputDir, "conflictFiles");       // store all conflict files during collecting
+            String outputJsonPath = PathUtils.getFileWithPathSegment(outputDir, "mergeTuples");             // store output tuples
+            String filteredTuplePath = PathUtils.getFileWithPathSegment(outputDir, "filteredTuples");       // store filtered tuples
             try {
                 if(finalS.contains("1")){
                     logger.info("-------------------------- Collect conflict files ----------------------------------");
-                    collectMergeConflict(repoPath, projectName, url, outputConflictPath, filetypes);
+                    collectMergeConflict(repoPath, projectName, url, outputConflictPath, allowedExtensions);
                 }
                 if(finalS.contains("2")){
                     logger.info("-------------------------- Collect merge tuples ----------------------------------");
@@ -111,16 +113,16 @@ public class Client {
         FileUtils.deleteDirectory(new File(repoPath));
     }
 
-    public static void collectMergeConflict(String projectPath, String projectName, String url, String output, String[] filetypes) throws Exception {
-        ConflictCollector collector = new ConflictCollector(projectPath, projectName, url, output, filetypes);
+    public static void collectMergeConflict(String projectPath, String projectName, String url, String output, Set<String> allowedExtensions) throws Exception {
+        ConflictCollector collector = new ConflictCollector(projectPath, projectName, url, output, allowedExtensions);
         collector.process();
     }
 
-    public static void collectMergeTuples(String outputFile, String projectName, String conflictFilesPath) throws Exception {
-        ChunkCollector collector = new ChunkCollector();
-        collector.extractFromProject(PathUtils.getFileWithPathSegment(conflictFilesPath, projectName));
-        JSONUtils.writeTuples2Json(collector.mergeTuples, projectName, outputFile);
-    }
+    // public static void collectMergeTuples(String outputFile, String projectName, String conflictFilesPath) throws Exception {
+    //     ChunkCollector collector = new ChunkCollector();
+    //     collector.extractFromProject(PathUtils.getFileWithPathSegment(conflictFilesPath, projectName));
+    //     JSONUtils.writeTuples2Json(collector.mergeTuples, projectName, outputFile);
+    // }
 
     public static void mergeTuplesAnalysis(String jsonPath, String projectName, String outputDir) throws Exception {
         ChunkFilter filter = new ChunkFilter(jsonPath, projectName, outputDir);

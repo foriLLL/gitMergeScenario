@@ -1,8 +1,13 @@
 package nju.merge.core;
 
+import nju.merge.entity.ConflictChunk;
+import nju.merge.entity.ConflictFile;
 import nju.merge.entity.MergeConflict;
 import nju.merge.entity.MergeScenario;
 import nju.merge.utils.PathUtils;
+
+import org.checkerframework.checker.units.qual.s;
+import org.eclipse.jgit.diff.RawText;
 import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
@@ -13,18 +18,12 @@ import org.eclipse.jgit.merge.ThreeWayMerger;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.jgit.util.IntList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.*;
 
 public class ConflictCollector {
     private static final Logger logger = LoggerFactory.getLogger(GitService.class);
@@ -34,14 +33,14 @@ public class ConflictCollector {
     private final String output;
     private Repository repository;
 
-    private final String[] fileType;
+    private final Set<String> allowedExtentions;
 
-    public ConflictCollector(String projectPath, String projectName, String url, String output, String[] fileType) {
+    public ConflictCollector(String projectPath, String projectName, String url, String output, Set<String> allowedExtentions) {
         this.projectName = projectName;
         this.projectPath = projectPath;
         this.URL = url;
         this.output = output;
-        this.fileType = fileType;
+        this.allowedExtentions = allowedExtentions;
     }
 
     /**
@@ -52,183 +51,114 @@ public class ConflictCollector {
         GitService service = new GitService();
         repository = service.cloneIfNotExist(this.projectPath, URL);
 
-        List<RevCommit> mergeCommits = service.getMergeCommits(repository);
-        List<MergeConflict> conflictList = new ArrayList<>();
+        List<RevCommit> mergeCommits = service.getMergeCommits(repository);     // 所有有 2 个 parent 的提交
+        List<MergeConflict> conflictList = new ArrayList<>();                   // 所有有冲突的提交，每个记录所有有冲突的文件（不是冲突块），用于创建文件目录
 
         for (RevCommit commit : mergeCommits) {
             mergeAndGetConflict(commit, conflictList);
         }
 
-        for (MergeConflict conflict : conflictList) {
-            saveConflictToFiles(conflict);
-        }
+        // 写入文件
 
-//        threeWayMergeFile(PathUtils.getFileWithPathSegment(output, projectName));
+
     }
 
-    private String isTargetFileType(String filename){
-        for(String s : fileType){
-            if(filename.endsWith(s)) return s;
+    private Boolean isTargetFileType(String filename){
+        // 将文件名按 "." 分割成数组
+        String[] parts = filename.split("\\.");
+
+        // 确保文件名包含扩展名，并且扩展名在 allowedExtensions 中
+        if (parts.length > 1) {
+            String extension = parts[parts.length - 1];  // 获取最后一个部分作为扩展名
+            return this.allowedExtentions.contains(extension);
         }
-        return "";
+
+        // 没有扩展名的文件
+        return false;
     }
     private void mergeAndGetConflict(RevCommit resolve, List<MergeConflict> conflictList) throws Exception {
         RevCommit ours = resolve.getParents()[0];
         RevCommit theirs = resolve.getParents()[1];
 
         ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(repository, true);
-
-        if (!merger.merge(ours, theirs)) {
+        if (!merger.merge(ours, theirs)) {                          // conflicts found
             RecursiveMerger rMerger = (RecursiveMerger) merger;
             RevCommit base = (RevCommit) rMerger.getBaseCommitId();
 
             MergeConflict conflict = new MergeConflict();
-            rMerger.getMergeResults().forEach((file, result) -> {
-                if (!isTargetFileType(file).equals("") && result.containsConflicts()) {
+            rMerger.getMergeResults().forEach((file, result) -> {           // result 有 chunk 属性，包含合并后文件的所有内容来源
+                if (isTargetFileType(file) && result.containsConflicts()) {
                     logger.info("file {} added", file);
-                    conflict.conflictFiles.add(file);
+                    // conflict.conflictFiles.add(file);
+
+                    // todo 在这里记录三个文件内容，同时记录所有冲突块以及上下文
+                    System.out.println("file: " + file);                        // todo file 是相对路径
+                    String[] baseContent;
+                    String[] oursContent;
+                    String[] theirsContent;
+                    ArrayList<String> mergedContent = new ArrayList<>();
+                    String[] resolvedContent;
+                    ArrayList<ConflictChunk> conflictChunks = new ArrayList<>();
+                    try {
+                        // 获取各文件内容
+                        baseContent = new String(((RawText)result.getSequences().get(0)).getRawContent()).split("\n");
+                        oursContent = new String(((RawText)result.getSequences().get(1)).getRawContent()).split("\n");
+                        theirsContent = new String(((RawText)result.getSequences().get(2)).getRawContent()).split("\n");
+                        // todo 获取到各个内容，根据 chunk 的内容，将冲突块标记出来，生成 conflictChunk，同时生成 mergedContent
+                        IntList mergeResultChunkTuples = result.chunks;
+                        for (int i = 0; i < mergeResultChunkTuples.size();) {
+                            int state = mergeResultChunkTuples.get(i);
+                            if (state == 0) {
+                                // 0 means no conflict
+                                mergedContent.addAll(Arrays.asList(baseContent).subList(mergeResultChunkTuples.get(i+2), mergeResultChunkTuples.get(i+3)));
+                                i += 4;
+                                continue;
+                            }
+                            // construct a conflict chunk
+                            ConflictChunk chunk = new ConflictChunk();
+                            chunk.repositoryName = projectName;
+                            chunk.filePath = file;
+                            chunk.mergedCommitHash = resolve.getName();
+                            chunk.startLine = mergedContent.size();
+                            
+                            int startLine, endLine;
+                            // ours
+                            mergedContent.add("<<<<<<< ours");
+                            startLine = mergeResultChunkTuples.get(i+2);
+                            endLine = mergeResultChunkTuples.get(i+3);
+                            chunk.ours = Arrays.copyOfRange(oursContent, startLine, endLine);
+                            mergedContent.addAll(Arrays.asList(chunk.ours));
+                            i+=4;
+                            // base
+                            mergedContent.add("||||||| base");
+                            startLine = mergeResultChunkTuples.get(i+2);
+                            endLine = mergeResultChunkTuples.get(i+3);
+                            chunk.base = Arrays.copyOfRange(baseContent, startLine, endLine);
+                            mergedContent.addAll(Arrays.asList(chunk.base));
+                            i+=4;
+                            // theirs
+                            mergedContent.add("=======");
+                            startLine = mergeResultChunkTuples.get(i+2);
+                            endLine = mergeResultChunkTuples.get(i+3);
+                            chunk.theirs = Arrays.copyOfRange(theirsContent, startLine, endLine);
+                            mergedContent.addAll(Arrays.asList(chunk.theirs));
+                            i+=4;
+                            mergedContent.add(">>>>>>> theirs");
+                            chunk.endLine = mergedContent.size();
+                            // done
+
+                            conflictChunks.add(chunk);
+                            System.out.println(chunk);
+                        }
+                        // resolvedContent 提取自 resove commit
+                        resolvedContent = GitService.getFileContent(this.repository, resolve, file);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    // new ConflictFile(base., file, file, file, file, file, file, file, file, file)
                 }
             });
-
-            if (conflict.conflictFiles.size() != 0) {
-                conflict.base = base;
-                conflict.ours = ours;
-                conflict.theirs = theirs;
-                conflict.resolve = resolve;
-                conflict.commitId = resolve.getName();
-                conflictList.add(conflict);
-            }
-        }
-    }
-
-    private void saveConflictToFiles(MergeConflict conflict){
-        Map<String, MergeScenario> scenarioMap = new HashMap<>();
-        for (String fileName : conflict.conflictFiles) {
-            scenarioMap.put(fileName, new MergeScenario(projectName, conflict.commitId, fileName ));
-        }
-
-        if (scenarioMap.size() == 0)
             return;
-
-        RevCommit resolve = conflict.resolve;
-        RevCommit base = conflict.base;
-        RevCommit ours = conflict.ours;
-        RevCommit theirs = conflict.theirs;
-
-//        logger.info("Collecting scenario in merge commit {}", resolve.getName());
-        scenarioMap.forEach((file, scenario) -> {
-            try {
-                scenario.resolve = getFileWithCommitAndPath(file, resolve);
-                scenario.ours = getFileWithCommitAndPath(file, ours);
-                scenario.theirs = getFileWithCommitAndPath(file, theirs);
-                if (isBaseExist(base)) {
-                    scenario.base = getFileWithCommitAndPath(file, base);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        scenarioMap.forEach((file, scenario) -> {
-            try {
-                scenario.write2folder(output);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
-    }
-
-    private boolean isBaseExist(ObjectId id) {
-        RevWalk walk = new RevWalk(repository);
-        try {
-
-            walk.parseAny(id);
-        } catch (MissingObjectException e) {
-            logger.info("Base not found in {}", id.getName());
-//            e.printStackTrace();
-            return false;
-        } catch (IOException e) {
-            logger.warn("A pack file or loose object could not be read!");
-            return false;
         }
-        return true;
     }
-
-    private byte[] getFileWithCommitAndPath(String path, RevCommit commit) throws IOException {
-        TreeWalk treeWalk = TreeWalk.forPath(repository, path, commit.getTree());
-        if (treeWalk == null)
-            return null;
-        ObjectLoader objectLoader = repository.open(treeWalk.getObjectId(0));
-        return objectLoader.getBytes();
-    }
-
-    private void threeWayMergeFile(String folder) throws IOException {
-        Path path = Paths.get(folder);
-        Files.walkFileTree(path, new FileVisitor<>() {
-
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                if (!isTargetFileType(dir.toString()).equals("")) {
-                    String suffix = isTargetFileType(dir.toString());
-                    File[] files = dir.toFile().listFiles();
-                    if (files == null)
-                        return FileVisitResult.CONTINUE;
-
-                    File base = null, ours = null, theirs = null, resolve = null;
-                    for (File f : files) {
-                        String name = f.getName();
-                        if(name.equals("base" + suffix)){
-                            base = f;
-                        } else if(name.equals("ours" + suffix)){
-                            ours = f;
-                        } else if(name.equals("theirs" + suffix)){
-                            theirs = f;
-                        } else if(name.equals("resolve" + suffix)){
-                            resolve = f;
-                        }
-                    }
-                    if (base != null && ours != null && theirs != null && resolve != null) {
-                        File conflict = new File(dir.toString(), "conflict" + suffix);
-                        if (conflict.exists())
-                            if (!conflict.delete()) {
-                                logger.warn("file failed to be deleted");
-                            }
-                        Files.copy(ours.toPath(), conflict.toPath());
-
-                        // KEY: 会直接将冲突写入 conflict 文件
-                        //logger.info("git merge-file --diff3 {} {} {}", conflict.getPath(), base.getPath(), theirs.getPath());
-                        ProcessBuilder pb2 = new ProcessBuilder(
-                                "git",
-                                "merge-file",
-                                "--diff3",
-                                conflict.getPath(),
-                                base.getPath(),
-                                theirs.getPath()
-                        );
-                        try {
-                            pb2.start().waitFor();
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs){
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFileFailed(Path file, IOException exc){
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
-                return FileVisitResult.CONTINUE;
-            }
-        });
-    }
-
 }
