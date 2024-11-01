@@ -118,11 +118,11 @@ public class Client {
         collector.process();
     }
 
-    // public static void collectMergeTuples(String outputFile, String projectName, String conflictFilesPath) throws Exception {
-    //     ChunkCollector collector = new ChunkCollector();
-    //     collector.extractFromProject(PathUtils.getFileWithPathSegment(conflictFilesPath, projectName));
-    //     JSONUtils.writeTuples2Json(collector.mergeTuples, projectName, outputFile);
-    // }
+    public static void collectMergeTuples(String outputFile, String projectName, String conflictFilesPath) throws Exception {
+        ChunkCollector collector = new ChunkCollector();
+        collector.extractFromProject(PathUtils.getFileWithPathSegment(conflictFilesPath, projectName));
+        JSONUtils.writeTuples2Json(collector.mergeTuples, projectName, outputFile);
+    }
 
     public static void mergeTuplesAnalysis(String jsonPath, String projectName, String outputDir) throws Exception {
         ChunkFilter filter = new ChunkFilter(jsonPath, projectName, outputDir);

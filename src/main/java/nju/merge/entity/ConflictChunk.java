@@ -8,7 +8,7 @@ public class ConflictChunk {
     public String[] theirs;
     public Optional<String> resolution; // 可选的解决方案
     public Optional<String> label; // 可选标签
-    public String mergedCommitHash; // 维护合并场景的哈希值
+    public String resolvedCommitHash; // 维护合并场景的哈希值
     public String repositoryName; // 来源的仓库
     public String filePath; // 冲突块所在的文件路径
     public int startLine; // 冲突块的起始行
@@ -24,7 +24,7 @@ public class ConflictChunk {
                 ", theirs='" + theirs + '\'' +
                 ", resolution=" + resolution +
                 ", label=" + label +
-                ", mergedCommitHash='" + mergedCommitHash + '\'' +
+                ", resolvedCommitHash='" + resolvedCommitHash + '\'' +
                 ", repositoryName='" + repositoryName + '\'' +
                 ", filePath='" + filePath + '\'' +
                 '}';

@@ -1,5 +1,8 @@
 package nju.merge.entity;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class ConflictFile {
     public String[] baseContent;      // 基准版本的文件内容
     public String[] oursContent;      // 我方版本的文件内容
@@ -14,6 +17,7 @@ public class ConflictFile {
 
     public String filePath;         // 文件路径
     public String repositoryName;   // 来源的仓库
+    public List<ConflictChunk> conflictChunks = new ArrayList<>(); // 冲突块
 
     public ConflictFile(String[] baseContent, String[] oursContent, String[] theirsContent, String[] mergedContent,
                         String[] resolvedContent, String resolvedCommitHash, String baseHash, String oursHash,
@@ -30,6 +34,21 @@ public class ConflictFile {
         this.theirsHash = theirsHash;
         this.filePath = filePath;
         this.repositoryName = repositoryName;
+    }
+
+    public void addConflictChunk(String[] base, String[] ours, String[] theirs, int startLine, int endLine) {
+        ConflictChunk cc = new ConflictChunk();
+        cc.base = base;
+        cc.ours = ours;
+        cc.theirs = theirs;
+        cc.startLine = startLine;
+        cc.endLine = endLine;
+
+        cc.repositoryName = this.repositoryName;
+        cc.filePath = this.filePath;
+        cc.resolvedCommitHash = this.resolvedCommitHash;
+
+        this.conflictChunks.add(cc);
     }
 
     @Override

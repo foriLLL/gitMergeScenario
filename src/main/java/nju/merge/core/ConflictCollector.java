@@ -1,24 +1,15 @@
 package nju.merge.core;
 
-import nju.merge.entity.ConflictChunk;
 import nju.merge.entity.ConflictFile;
 import nju.merge.entity.MergeConflict;
-import nju.merge.entity.MergeScenario;
-import nju.merge.utils.PathUtils;
-
-import org.checkerframework.checker.units.qual.s;
 import org.eclipse.jgit.diff.RawText;
-import org.eclipse.jgit.errors.MissingObjectException;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.merge.MergeChunk;
 import org.eclipse.jgit.merge.MergeStrategy;
 import org.eclipse.jgit.merge.RecursiveMerger;
 import org.eclipse.jgit.merge.ThreeWayMerger;
+import org.eclipse.jgit.merge.MergeChunk.ConflictState;
 import org.eclipse.jgit.revwalk.RevCommit;
-import org.eclipse.jgit.revwalk.RevWalk;
-import org.eclipse.jgit.treewalk.TreeWalk;
-import org.eclipse.jgit.util.IntList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,77 +76,60 @@ public class ConflictCollector {
             RecursiveMerger rMerger = (RecursiveMerger) merger;
             RevCommit base = (RevCommit) rMerger.getBaseCommitId();
 
-            MergeConflict conflict = new MergeConflict();
             rMerger.getMergeResults().forEach((file, result) -> {           // result 有 chunk 属性，包含合并后文件的所有内容来源
                 if (isTargetFileType(file) && result.containsConflicts()) {
                     logger.info("file {} added", file);
-                    // conflict.conflictFiles.add(file);
-
-                    // todo 在这里记录三个文件内容，同时记录所有冲突块以及上下文
-                    System.out.println("file: " + file);                        // todo file 是相对路径
-                    String[] baseContent;
-                    String[] oursContent;
-                    String[] theirsContent;
-                    ArrayList<String> mergedContent = new ArrayList<>();
-                    String[] resolvedContent;
-                    ArrayList<ConflictChunk> conflictChunks = new ArrayList<>();
+                    
+                    // 在这里记录文件内容，同时记录所有冲突块以及上下文
+                    System.out.println("file: " + file);                        // todo file 是相对路径？
                     try {
                         // 获取各文件内容
-                        baseContent = new String(((RawText)result.getSequences().get(0)).getRawContent()).split("\n");
-                        oursContent = new String(((RawText)result.getSequences().get(1)).getRawContent()).split("\n");
-                        theirsContent = new String(((RawText)result.getSequences().get(2)).getRawContent()).split("\n");
-                        // todo 获取到各个内容，根据 chunk 的内容，将冲突块标记出来，生成 conflictChunk，同时生成 mergedContent
-                        IntList mergeResultChunkTuples = result.chunks;
-                        for (int i = 0; i < mergeResultChunkTuples.size();) {
-                            int state = mergeResultChunkTuples.get(i);
-                            if (state == 0) {
-                                // 0 means no conflict
-                                mergedContent.addAll(Arrays.asList(baseContent).subList(mergeResultChunkTuples.get(i+2), mergeResultChunkTuples.get(i+3)));
-                                i += 4;
-                                continue;
-                            }
-                            // construct a conflict chunk
-                            ConflictChunk chunk = new ConflictChunk();
-                            chunk.repositoryName = projectName;
-                            chunk.filePath = file;
-                            chunk.mergedCommitHash = resolve.getName();
-                            chunk.startLine = mergedContent.size();
-                            
-                            int startLine, endLine;
-                            // ours
-                            mergedContent.add("<<<<<<< ours");
-                            startLine = mergeResultChunkTuples.get(i+2);
-                            endLine = mergeResultChunkTuples.get(i+3);
-                            chunk.ours = Arrays.copyOfRange(oursContent, startLine, endLine);
-                            mergedContent.addAll(Arrays.asList(chunk.ours));
-                            i+=4;
-                            // base
-                            mergedContent.add("||||||| base");
-                            startLine = mergeResultChunkTuples.get(i+2);
-                            endLine = mergeResultChunkTuples.get(i+3);
-                            chunk.base = Arrays.copyOfRange(baseContent, startLine, endLine);
-                            mergedContent.addAll(Arrays.asList(chunk.base));
-                            i+=4;
-                            // theirs
-                            mergedContent.add("=======");
-                            startLine = mergeResultChunkTuples.get(i+2);
-                            endLine = mergeResultChunkTuples.get(i+3);
-                            chunk.theirs = Arrays.copyOfRange(theirsContent, startLine, endLine);
-                            mergedContent.addAll(Arrays.asList(chunk.theirs));
-                            i+=4;
-                            mergedContent.add(">>>>>>> theirs");
-                            chunk.endLine = mergedContent.size();
-                            // done
-
-                            conflictChunks.add(chunk);
-                            System.out.println(chunk);
+                        String[][] contents = new String[3][];
+                        for (int i = 0; i < 3; i++) {
+                            contents[i] = new String(((RawText)result.getSequences().get(i)).getRawContent()).split("\n");
                         }
                         // resolvedContent 提取自 resove commit
-                        resolvedContent = GitService.getFileContent(this.repository, resolve, file);
+                        String[] resolvedContent = GitService.getFileContent(this.repository, resolve, file);
+                        ArrayList<String> mergedContent = new ArrayList<>();
+                        ConflictFile conflictFile = new ConflictFile(
+                            contents[0], contents[1], contents[2], 
+                            null, resolvedContent, resolve.getName(), base.getName(), ours.getName(), theirs.getName(), file, projectName
+                        );
+
+                        // todo 获取到各个内容，根据 chunk 的内容，将冲突块标记出来，生成 conflictChunk，同时生成 mergedContent
+                        String[][] chunkContents = new String[3][];
+                        int startLine = -1, endLine = -1;
+                        for (MergeChunk chunk : result) {
+                            int srcIdx = chunk.getSequenceIndex();
+                            int begin = chunk.getBegin();
+                            int end = chunk.getEnd();
+                            ConflictState state = chunk.getConflictState();
+                            
+                            if (state == ConflictState.NO_CONFLICT) {
+                                mergedContent.addAll(Arrays.asList(contents[srcIdx]).subList(begin, end));
+                                continue;
+                            }
+                            // 冲突块
+                            chunkContents[srcIdx] = Arrays.copyOfRange(contents[srcIdx], begin, end);
+                            if (state == ConflictState.FIRST_CONFLICTING_RANGE) {
+                                startLine = mergedContent.size();
+                                mergedContent.add("<<<<<<< ours");
+                                mergedContent.addAll(Arrays.asList(chunkContents[srcIdx]));
+                            } else if (state == ConflictState.BASE_CONFLICTING_RANGE) {
+                                mergedContent.add("||||||| base");
+                                mergedContent.addAll(Arrays.asList(chunkContents[srcIdx]));
+                            } else if (state == ConflictState.NEXT_CONFLICTING_RANGE) {
+                                mergedContent.add("=======");
+                                mergedContent.addAll(Arrays.asList(chunkContents[srcIdx]));
+                                mergedContent.add(">>>>>>> theirs");
+                                endLine = mergedContent.size();
+                                conflictFile.addConflictChunk(chunkContents[0], chunkContents[1], chunkContents[2], startLine, endLine);
+                            }
+                        }
+                        conflictFile.mergedContent = mergedContent.toArray(new String[0]);
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
-                    // new ConflictFile(base., file, file, file, file, file, file, file, file, file)
                 }
             });
             return;
