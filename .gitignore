@@ -9,3 +9,4 @@
 # MacOS
 .DS_Store
 collect_output
+/debug/

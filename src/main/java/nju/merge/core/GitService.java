@@ -1,5 +1,7 @@
 package nju.merge.core;
 
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.Ref;
@@ -24,30 +26,37 @@ public class GitService {
 
     public GitService(){}
 
-    public Repository cloneIfNotExist(String path, String url) throws Exception {
+    public static Repository cloneIfNotExist(String path, String url) throws Exception {
         File gitFolder = new File(path);
         Repository repo;
         if(gitFolder.exists()) {
-            logger.info("git repo {} is found...........", path);
+            logger.info("仓库已存在本地：{}", path);
+            FileRepositoryBuilder builder = new FileRepositoryBuilder();
+            repo = builder.setGitDir(new File(gitFolder, ".git"))
+                    .readEnvironment()
+                    .findGitDir()
+                    .build();
+            return repo;
         } else{
-            logger.info("git cloning to {} from {} ...... ", path, url);
-            ProcessBuilder pb = new ProcessBuilder(
-                    "git",
-                    "clone",
-                    url,
-                    path);
-            pb.start().waitFor();
+            try {
+                logger.info("开始克隆仓库 {}...... ", url);
+                Git git = Git.cloneRepository()
+                        .setURI(url)
+                        .setDirectory(new File(path))
+                        .call();
+
+                logger.info("克隆完成");
+                return git.getRepository();
+            } catch (GitAPIException e) {
+                logger.warn("克隆仓库失败 {}", url);
+                // e.printStackTrace();
+                throw e;
+            }
         }
-        FileRepositoryBuilder builder = new FileRepositoryBuilder();
-        repo = builder.setGitDir(new File(gitFolder, ".git"))
-                .readEnvironment()
-                .findGitDir()
-                .build();
-        return repo;
     }
 
 
-    public List<RevCommit> getMergeCommits(Repository repository) throws Exception {
+    public static List<RevCommit> getMergeCommits(Repository repository) throws Exception {
         // todo git log --merges --min-parents=2 --max-parents=2
         
         logger.info("Collecting merge commits");
