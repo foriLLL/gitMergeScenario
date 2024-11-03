@@ -1,12 +1,11 @@
 package nju.merge.core;
 
+import com.alibaba.fastjson.*;
+
 import nju.merge.entity.ConflictFile;
 import nju.merge.entity.MergeConflict;
 import org.eclipse.jgit.diff.RawText;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.diff.DiffAlgorithm;
-import org.eclipse.jgit.diff.HistogramDiff;
-import org.eclipse.jgit.lib.Config;
 import org.eclipse.jgit.merge.MergeChunk;
 import org.eclipse.jgit.merge.MergeStrategy;
 import org.eclipse.jgit.merge.RecursiveMerger;
@@ -91,7 +90,13 @@ public class ConflictCollector {
                 writeContent(basePath.resolve("ours"), conflictFile.oursContent);
                 writeContent(basePath.resolve("theirs"), conflictFile.theirsContent);
                 writeContent(basePath.resolve("thuth"), conflictFile.resolvedContent);
-                writeContent(basePath.resolve("merged"), conflictFile.mergedContent);
+                writeContent(basePath.resolve("merged_generated_through_chunk"), conflictFile.mergedContent);
+
+                // 将对应文件的冲突块写入 metadata.json
+                // 使用 FastJSON 序列化
+                String jsonString = JSON.toJSONString(conflictFile, SerializerFeature.PrettyFormat);
+                writeContent(basePath.resolve("metadata.json"), new String[]{jsonString});
+
             } catch (IOException e) {
                 e.printStackTrace();
                 logger.error("Failed to write conflict file: " + relativePath, e);
@@ -155,19 +160,26 @@ public class ConflictCollector {
                                 }
                                 ConflictState state = chunk.getConflictState();
                                 
-                                if (end > contents[srcIdx].length || end < 0 || begin < 0) {
+                                if (end < 0 || begin < 0) {
                                     // writeContent(Paths.get("debug", "base"), contents[0]);
                                     // writeContent(Paths.get("debug", "ours"), contents[1]);
                                     // writeContent(Paths.get("debug", "theirs"), contents[2]);
                                     // writeContent(Paths.get("debug", "resolved"), resolvedContent);
                                     begin = end = 0;
                                 }
+                                if (begin > contents[srcIdx].length) {
+                                    logger.error("begin > contents[srcIdx].length");
+                                    logger.error("file:" + file);
+                                    logger.error("project:" + projectName);
+                                    logger.error("resolvedCommit:" + resolve.getName());
+                                    break;
+                                }
                                 if (state == ConflictState.NO_CONFLICT) {
                                     mergedContent.addAll(Arrays.asList(contents[srcIdx]).subList(begin, end));
                                     continue;
                                 }
-                                // 冲突块
                                 
+                                // 冲突块
                                 chunkContents[srcIdx] = Arrays.copyOfRange(contents[srcIdx], begin, end);
                                 if (state == ConflictState.FIRST_CONFLICTING_RANGE) {
                                     startLine = mergedContent.size();
