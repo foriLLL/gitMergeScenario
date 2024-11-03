@@ -1,6 +1,7 @@
 package nju.merge.core;
 
-import com.alibaba.fastjson.*;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.serializer.SerializerFeature;
 
 import nju.merge.entity.ConflictFile;
 import nju.merge.entity.MergeConflict;
@@ -124,8 +125,6 @@ public class ConflictCollector {
                 List<ConflictFile> conflictFiles = new ArrayList<>();
                 rMerger.getMergeResults().forEach((file, result) -> {           // result 有 chunk 属性，包含合并后文件的所有内容来源
                     if (isTargetFileType(file) && result.containsConflicts()) {
-                        logger.info("file {} added", file);
-                        
                         // 在这里记录文件内容，同时记录所有冲突块以及上下文
                         try {
                             // resolvedContent 提取自 resove commit
@@ -137,9 +136,11 @@ public class ConflictCollector {
                             }
                             ArrayList<String> mergedContent = new ArrayList<>();
                             if (base == null) {
+                                logger.error("base is null");
                                 logger.error("repo:" + projectName);
                                 logger.error("resolve:" + resolve);
                                 logger.error("file:" + file);
+                                logger.error("--------------------");
                                 return;
                             }
                             ConflictFile conflictFile = new ConflictFile(
@@ -172,6 +173,7 @@ public class ConflictCollector {
                                     logger.error("file:" + file);
                                     logger.error("project:" + projectName);
                                     logger.error("resolvedCommit:" + resolve.getName());
+                                    logger.error("--------------------");
                                     break;
                                 }
                                 if (state == ConflictState.NO_CONFLICT) {
@@ -200,7 +202,11 @@ public class ConflictCollector {
                             conflictFiles.add(conflictFile);
                         } catch (IOException e) {
                             // most likely file not found
+                            logger.warn("Failed to get file content: " + file);
+                            logger.warn("Repo: " + projectName);
+                            logger.warn("Resolve: " + resolve.getName());
                             logger.warn(e.getMessage());
+                            logger.warn("--------------------");
                         }
                     }
                 });

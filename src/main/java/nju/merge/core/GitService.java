@@ -72,8 +72,11 @@ public class GitService {
                     commits.add(commit);
                 }
             }
+        } catch (IOException e) {
+            logger.error("Error while collecting merge commits", e);
+            logger.error("repository: {}", repository.getDirectory().getAbsolutePath());
+            logger.error("------------------------------------");
         }
-        System.out.println("=============================================================" + commits.size());
         return commits;
     }
 
