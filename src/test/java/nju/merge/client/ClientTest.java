@@ -1,10 +1,16 @@
 package nju.merge.client;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.MergeCommand;
 import org.eclipse.jgit.api.MergeResult;
@@ -18,23 +24,40 @@ public class ClientTest {
     private static String workdir = "";
     private static String reposDir = workdir + "collect_output/repos";   // store all the repos
     private static String outputDir = workdir + "collect_output/output";
+    private static Logger logger = LoggerFactory.getLogger(ClientTest.class);
     
     @Test
     public void collectTest() throws Exception {
-        String list_file = "collect_output/repo_list.csv";
+        System.setProperty("http.proxyHost", "114.212.86.64");
+        System.setProperty("http.proxyPort", "7890");
+        System.setProperty("https.proxyHost", "114.212.86.64");
+        System.setProperty("https.proxyPort", "7890");
+
+
+        String list_file = "collect_output/filtered_repos_100+stars.csv";
 
         HashMap<String, String> repos = new HashMap<>();
         Client.addReposFromText(list_file, repos);
-        System.out.println(repos);
+
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        AtomicInteger completedCnt = new AtomicInteger(0);
         repos.forEach((projectName, url) -> {
-            String repoPath = PathUtils.getFileWithPathSegment(reposDir, projectName);                      // store the specific repo
-            String outputConflictPath = PathUtils.getFileWithPathSegment(outputDir, "conflictFiles");       // store all conflict files during collecting
-            try {
-                Client.collectMergeConflict(repoPath, projectName, url, outputConflictPath, Client.allowedExtensions);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                String repoPath = PathUtils.getFileWithPathSegment(reposDir, projectName);
+                String outputConflictPath = PathUtils.getFileWithPathSegment(outputDir, "conflictFiles");
+                try {
+                    logger.info("Processing repo: {} on thread: {}", projectName, Thread.currentThread().getName());
+                    Client.collectMergeConflict(repoPath, projectName, url, outputConflictPath, Client.allowedExtensions);
+                } catch (Exception e) {
+                    logger.error("Error processing repo: " + projectName, e);
+                }
+                int completed = completedCnt.incrementAndGet();
+                logger.info("Completed: {}/{}, {}%", completed, repos.size(), completed * 100.0 / repos.size());
+            });
+            futures.add(future);
         });
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
 
 

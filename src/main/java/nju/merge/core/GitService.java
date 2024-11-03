@@ -43,6 +43,7 @@ public class GitService {
                 Git git = Git.cloneRepository()
                         .setURI(url)
                         .setDirectory(new File(path))
+                        .setTimeout(600)
                         .call();
 
                 logger.info("克隆完成");
@@ -57,7 +58,7 @@ public class GitService {
 
 
     public static List<RevCommit> getMergeCommits(Repository repository) throws Exception {
-        // todo git log --merges --min-parents=2 --max-parents=2
+        // todo git log --merges --min-parents=2 --max-parents=2 不知道性能会好吗？感觉本质上也是遍历
         
         logger.info("Collecting merge commits");
 

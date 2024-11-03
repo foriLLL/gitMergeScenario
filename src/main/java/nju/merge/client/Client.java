@@ -1,9 +1,6 @@
 package nju.merge.client;
 
-import nju.merge.core.ChunkCollector;
 import nju.merge.core.ConflictCollector;
-import nju.merge.core.ChunkFilter;
-import nju.merge.utils.JSONUtils;
 import nju.merge.utils.PathUtils;
 import org.apache.commons.cli.*;
 import org.apache.commons.io.FileUtils;
@@ -16,6 +13,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CompletableFuture;
 
 public class Client {
 
@@ -54,6 +53,12 @@ public class Client {
     }
     
     public static void main(String[] args) throws Exception{
+
+        System.setProperty("http.proxyHost", "114.212.86.64");
+        System.setProperty("http.proxyPort", "7890");
+        System.setProperty("https.proxyHost", "114.212.86.64");
+        System.setProperty("https.proxyPort", "7890");
+
         Options options = new Options();
         options.addOption("d", "workDir", true, "work directory");
         options.addOption("p", "projectPath", true, "projectPath");
@@ -84,18 +89,28 @@ public class Client {
             repos.put(projectPath, "");
         }
         String finalS = s;
+
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        AtomicInteger completedCnt = new AtomicInteger(0);
         repos.forEach((projectName, url) -> {
-            String repoPath = PathUtils.getFileWithPathSegment(reposDir, projectName);                      // store the specific repo
-            String outputConflictPath = PathUtils.getFileWithPathSegment(outputDir, "conflictFiles");       // store all conflict files during collecting
-            try {
-                if(finalS.contains("1")){
-                    logger.info("-------------------------- Collect conflict files ----------------------------------");
-                    collectMergeConflict(repoPath, projectName, url, outputConflictPath, allowedExtensions);
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                String repoPath = PathUtils.getFileWithPathSegment(reposDir, projectName);
+                String outputConflictPath = PathUtils.getFileWithPathSegment(outputDir, "conflictFiles");
+                try {
+                    if (finalS.contains("1")) {
+                        logger.error("Processing repo: {} on thread: {}", projectName, Thread.currentThread().getName());
+                        collectMergeConflict(repoPath, projectName, url, outputConflictPath, allowedExtensions);
+                    }
+                } catch (Exception e) {
+                    logger.error("Error processing repo: " + projectName, e);
                 }
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
+                int completed = completedCnt.incrementAndGet();
+                logger.info("Completed: {}/{}, {}%", completed, repos.size(), completed * 100.0 / repos.size());
+            });
+            futures.add(future);
         });
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
     }
 
     public static void deleteRepo(String repoPath) throws IOException {

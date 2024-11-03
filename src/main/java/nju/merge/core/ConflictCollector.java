@@ -44,6 +44,16 @@ public class ConflictCollector {
         } catch (Exception e) {
             e.printStackTrace();
             logger.error("仓库克隆失败：" + URL, e);
+            try {
+                // 将 projectname, url 追加写入 error_clone.txt
+                // 确保 paths 存在
+                Path errorPath = Paths.get(output, "error_clone.txt");
+                Files.createDirectories(errorPath.getParent());
+                Files.write(errorPath, Collections.singletonList(projectName + "," + URL), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } catch (IOException ioException) {
+                ioException.printStackTrace();
+                logger.error("Failed to write error_clone.txt", ioException);
+            }
             return;
         }
     }
@@ -81,7 +91,7 @@ public class ConflictCollector {
     private void writeConflictFiles(String outputPath, List<ConflictFile> conflictFiles, String resolveHash) {
         for (ConflictFile conflictFile : conflictFiles) {
             String relativePath = conflictFile.filePath;
-            
+            logger.info("{} conflict chunks collected", conflictFile.conflictChunks.size());
             try {
                 // 创建基本目录路径
                 Path basePath = Paths.get(outputPath, projectName, resolveHash, relativePath);
