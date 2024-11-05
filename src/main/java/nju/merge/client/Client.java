@@ -14,7 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.*;
 
 public class Client {
 
@@ -90,6 +90,10 @@ public class Client {
         }
         String finalS = s;
 
+        // 创建固定大小的线程池
+        int threadPoolSize = 10; // 你想要的线程数量
+        ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
+
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         AtomicInteger completedCnt = new AtomicInteger(0);
         repos.forEach((projectName, url) -> {
@@ -106,7 +110,7 @@ public class Client {
                 }
                 int completed = completedCnt.incrementAndGet();
                 logger.info("Completed: {}/{}, {}%", completed, repos.size(), completed * 100.0 / repos.size());
-            });
+            }, executorService);
             futures.add(future);
         });
 

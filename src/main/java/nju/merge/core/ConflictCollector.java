@@ -3,6 +3,7 @@ package nju.merge.core;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.serializer.SerializerFeature;
 
+import nju.merge.core.align.DiffUtilsAligner;
 import nju.merge.entity.ConflictFile;
 import nju.merge.entity.MergeConflict;
 import org.eclipse.jgit.diff.RawText;
@@ -209,6 +210,11 @@ public class ConflictCollector {
                                 }
                             }
                             conflictFile.mergedContent = mergedContent.toArray(new String[0]);
+
+                            // 获取冲突块的 revolvedContent
+                            DiffUtilsAligner.getResolutions(conflictFile);
+//                            DeepMergeAligner.getResolutions(conflictFile);
+
                             conflictFiles.add(conflictFile);
                         } catch (IOException e) {
                             // most likely file not found

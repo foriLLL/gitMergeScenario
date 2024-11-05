@@ -1,12 +1,10 @@
 package nju.merge.client;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
@@ -40,7 +38,11 @@ public class ClientTest {
         Client.addReposFromText(list_file, repos);
 
         List<CompletableFuture<Void>> futures = new ArrayList<>();
+        // 创建固定大小的线程池
+        int threadPoolSize = 10; // 你想要的线程数量
+        ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
         AtomicInteger completedCnt = new AtomicInteger(0);
+
         repos.forEach((projectName, url) -> {
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 String repoPath = PathUtils.getFileWithPathSegment(reposDir, projectName);
@@ -53,7 +55,7 @@ public class ClientTest {
                 }
                 int completed = completedCnt.incrementAndGet();
                 logger.info("Completed: {}/{}, {}%", completed, repos.size(), completed * 100.0 / repos.size());
-            });
+            }, executorService);
             futures.add(future);
         });
 

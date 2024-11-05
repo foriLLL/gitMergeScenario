@@ -6,8 +6,8 @@ public class ConflictChunk {
     public String[] base;
     public String[] ours;
     public String[] theirs;
-    public Optional<String> resolution; // 可选的解决方案
-    public Optional<String> label; // 可选标签
+    public String[] resolution; // 可选的解决方案
+    public String label; // 可选标签
     public String resolvedCommitHash; // 维护合并场景的哈希值
     public String repositoryName; // 来源的仓库
     public String filePath; // 冲突块所在的文件路径
