@@ -45,7 +45,9 @@ public class DeepMergeAligner extends Aligner{
 
 
             // extract resolution
-            cc.resolution = Arrays.copyOfRange(truthPadded, len_after - prfxIdx, sffxIdx);
+            if (len_after - prfxIdx <= sffxIdx) {
+                cc.resolution = Arrays.copyOfRange(truthPadded, len_after - prfxIdx, sffxIdx);
+            }
         }
     }
 

@@ -40,6 +40,8 @@ public class GitService {
         } else{
             try {
                 logger.info("开始克隆仓库 {}...... ", url);
+                // https://github.com/eclipse-jgit/jgit/tree/master/org.eclipse.jgit.ssh.jsch
+                // 需要 export GIT_SSH=/usr/bin/ssh
                 Git git = Git.cloneRepository()
                         .setURI(url)
                         .setDirectory(new File(path))

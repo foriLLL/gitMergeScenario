@@ -26,20 +26,21 @@ public class ClientTest {
     
     @Test
     public void collectTest() throws Exception {
-        System.setProperty("http.proxyHost", "114.212.86.64");
-        System.setProperty("http.proxyPort", "7890");
-        System.setProperty("https.proxyHost", "114.212.86.64");
-        System.setProperty("https.proxyPort", "7890");
+//        System.setProperty("http.proxyHost", "114.212.86.64");
+//        System.setProperty("http.proxyPort", "7890");
+//        System.setProperty("https.proxyHost", "114.212.86.64");
+//        System.setProperty("https.proxyPort", "7890");
 
 
-        String list_file = "collect_output/filtered_repos_100+stars.csv";
+//        String list_file = "collect_output/filtered_repos_100+stars.csv";
+        String list_file = "collect_output/filtered_repos_100+stars_ssh_protocol.csv";
 
         HashMap<String, String> repos = new HashMap<>();
         Client.addReposFromText(list_file, repos);
 
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         // 创建固定大小的线程池
-        int threadPoolSize = 10; // 你想要的线程数量
+        int threadPoolSize = 40; // 你想要的线程数量
         ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
         AtomicInteger completedCnt = new AtomicInteger(0);
 
@@ -54,7 +55,7 @@ public class ClientTest {
                     logger.error("Error processing repo: " + projectName, e);
                 }
                 int completed = completedCnt.incrementAndGet();
-                logger.info("Completed: {}/{}, {}%", completed, repos.size(), completed * 100.0 / repos.size());
+                System.out.println("Completed: " + completed + "/" + repos.size() + ", " + (completed * 100.0 / repos.size()) + "%");
             }, executorService);
             futures.add(future);
         });

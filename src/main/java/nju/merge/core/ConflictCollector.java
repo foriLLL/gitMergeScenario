@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.serializer.SerializerFeature;
 
 import nju.merge.core.align.DiffUtilsAligner;
+import nju.merge.core.align.DeepMergeAligner;
 import nju.merge.entity.ConflictFile;
 import nju.merge.entity.MergeConflict;
 import org.eclipse.jgit.diff.RawText;
@@ -43,7 +44,6 @@ public class ConflictCollector {
         try {
             repository = GitService.cloneIfNotExist(this.projectPath, URL);
         } catch (Exception e) {
-            e.printStackTrace();
             logger.error("仓库克隆失败：" + URL, e);
             try {
                 // 将 projectname, url 追加写入 error_clone.txt
@@ -52,7 +52,6 @@ public class ConflictCollector {
                 Files.createDirectories(errorPath.getParent());
                 Files.write(errorPath, Collections.singletonList(projectName + "," + URL), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             } catch (IOException ioException) {
-                ioException.printStackTrace();
                 logger.error("Failed to write error_clone.txt", ioException);
             }
             return;
@@ -75,7 +74,7 @@ public class ConflictCollector {
         }
     }
 
-    private Boolean isTargetFileType(String filename){
+    private boolean isTargetFileType(String filename){
         // 将文件名按 "." 分割成数组
         String[] parts = filename.split("\\.");
 
@@ -92,7 +91,7 @@ public class ConflictCollector {
     private void writeConflictFiles(String outputPath, List<ConflictFile> conflictFiles, String resolveHash) {
         for (ConflictFile conflictFile : conflictFiles) {
             String relativePath = conflictFile.filePath;
-            logger.info("{} conflict chunks collected", conflictFile.conflictChunks.size());
+//            logger.info("{} conflict chunks collected", conflictFile.conflictChunks.size());
             try {
                 // 创建基本目录路径
                 Path basePath = Paths.get(outputPath, projectName, resolveHash, relativePath);
@@ -110,8 +109,7 @@ public class ConflictCollector {
                 writeContent(basePath.resolve("metadata.json"), new String[]{jsonString});
 
             } catch (IOException e) {
-                e.printStackTrace();
-                logger.error("Failed to write conflict file: " + relativePath, e);
+                logger.error("Failed to write conflict file: {}", relativePath, e);
             }
         }
     }
@@ -148,9 +146,9 @@ public class ConflictCollector {
                             ArrayList<String> mergedContent = new ArrayList<>();
                             if (base == null) {
                                 logger.error("base is null");
-                                logger.error("repo:" + projectName);
-                                logger.error("resolve:" + resolve);
-                                logger.error("file:" + file);
+                                logger.error("repo:{}", projectName);
+                                logger.error("resolve:{}", resolve);
+                                logger.error("file:{}", file);
                                 logger.error("--------------------");
                                 return;
                             }
@@ -181,9 +179,9 @@ public class ConflictCollector {
                                 }
                                 if (begin > contents[srcIdx].length) {
                                     logger.error("begin > contents[srcIdx].length");
-                                    logger.error("file:" + file);
-                                    logger.error("project:" + projectName);
-                                    logger.error("resolvedCommit:" + resolve.getName());
+                                    logger.error("file:{}", file);
+                                    logger.error("project:{}", projectName);
+                                    logger.error("resolvedCommit:{}", resolve.getName());
                                     logger.error("--------------------");
                                     break;
                                 }
@@ -212,8 +210,8 @@ public class ConflictCollector {
                             conflictFile.mergedContent = mergedContent.toArray(new String[0]);
 
                             // 获取冲突块的 revolvedContent
-                            DiffUtilsAligner.getResolutions(conflictFile);
-//                            DeepMergeAligner.getResolutions(conflictFile);
+//                            DiffUtilsAligner.getResolutions(conflictFile);
+                            DeepMergeAligner.getResolutions(conflictFile);
 
                             conflictFiles.add(conflictFile);
                         } catch (IOException e) {
