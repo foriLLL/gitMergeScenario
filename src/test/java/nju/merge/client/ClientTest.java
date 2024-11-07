@@ -48,12 +48,10 @@ public class ClientTest {
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 String repoPath = PathUtils.getFileWithPathSegment(reposDir, projectName);
                 String outputConflictPath = PathUtils.getFileWithPathSegment(outputDir, "conflictFiles");
-                try {
-                    logger.info("Processing repo: {} on thread: {}", projectName, Thread.currentThread().getName());
-                    Client.collectMergeConflict(repoPath, projectName, url, outputConflictPath, Client.allowedExtensions);
-                } catch (Exception e) {
-                    logger.error("Error processing repo: " + projectName, e);
-                }
+
+                logger.info("Processing repo: {} on thread: {}", projectName, Thread.currentThread().getName());
+                Client.collectMergeConflict(repoPath, projectName, url, outputConflictPath, Client.allowedExtensions);
+
                 int completed = completedCnt.incrementAndGet();
                 System.out.println("Completed: " + completed + "/" + repos.size() + ", " + (completed * 100.0 / repos.size()) + "%");
             }, executorService);

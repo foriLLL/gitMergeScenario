@@ -18,6 +18,7 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.Files;
@@ -44,7 +45,7 @@ public class ConflictCollector {
         try {
             repository = GitService.cloneIfNotExist(this.projectPath, URL);
         } catch (Exception e) {
-            logger.error("仓库克隆失败：" + URL, e);
+            logger.error("仓库克隆失败：{}", URL, e);
             try {
                 // 将 projectname, url 追加写入 error_clone.txt
                 // 确保 paths 存在
