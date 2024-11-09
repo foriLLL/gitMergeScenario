@@ -43,7 +43,7 @@ public class ConflictCollector {
         } catch (Exception e) {
             logger.error("仓库克隆失败：{}", URL, e);
             try {
-                // 将 projectname, url 追加写入 error_clone.txt
+                // 将 project name, url 追加写入 error_clone.txt
                 // 确保 paths 存在
                 Path errorPath = Paths.get(output, "error_clone.txt");
                 Files.createDirectories(errorPath.getParent());

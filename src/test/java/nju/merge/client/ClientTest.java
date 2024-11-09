@@ -19,22 +19,22 @@ import org.junit.jupiter.api.Test;
 import nju.merge.utils.PathUtils;
 
 public class ClientTest {
-    private static String workdir = "collect_output/";
-    private static String reposDir = workdir + "repos";   // store all the repos
-    private static String outputDir = workdir + "output";
-    private static Logger logger = LoggerFactory.getLogger(ClientTest.class);
+    private static final String workdir = "/Volumes/Q1571825323/conflict_data/";
+    private static final String reposDir = workdir + "repos";   // store all the repos
+    private static final String outputDir = workdir + "output";
+    private static final Logger logger = LoggerFactory.getLogger(ClientTest.class);
     
     @Test
     public void collectTest() throws Exception {
 
-        String list_file = workdir + "filtered_repos_100+stars_ssh_protocol.csv";
+        String list_file = workdir + "100+stars_4GB-_multidev_org_lang.csv";
 
         HashMap<String, String> repos = new HashMap<>();
         Client.addReposFromText(list_file, repos);
 
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         // 创建固定大小的线程池
-        int threadPoolSize = 5; // 你想要的线程数量
+        int threadPoolSize = 4; // 你想要的线程数量
         ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
         AtomicInteger completedCnt = new AtomicInteger(0);
 
@@ -53,10 +53,6 @@ public class ClientTest {
         });
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-    }
-
-    public void collectResolutionAndWriteJSON() {
-
     }
 
 

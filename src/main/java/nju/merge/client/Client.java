@@ -131,8 +131,8 @@ public class Client {
             ConflictCollector collector = new ConflictCollector(repoPath, projectName, url, output, allowedExtensions);
             collector.process();
         } catch (Exception e) {
-            deleteRepo(repoPath);       // 硬盘不够大，收集完就删除
             logger.error("收集遇到问题：{}", repoPath, e);
         }
+        deleteRepo(repoPath);       // 硬盘不够大，收集完就删除
     }
 }
