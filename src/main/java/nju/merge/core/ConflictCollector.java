@@ -3,7 +3,6 @@ package nju.merge.core;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.serializer.SerializerFeature;
 import nju.merge.entity.ConflictFile;
-import nju.merge.entity.MergeConflict;
 import org.eclipse.jgit.diff.RawText;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.merge.MergeStrategy;
@@ -13,7 +12,6 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.Files;
@@ -51,7 +49,6 @@ public class ConflictCollector {
             } catch (IOException ioException) {
                 logger.error("Failed to write error_clone.txt", ioException);
             }
-            return;
         }
     }
     
@@ -64,12 +61,10 @@ public class ConflictCollector {
             return;
         }
         List<RevCommit> mergeCommits = GitService.getMergeCommits(repository);     // 所有有 2 个 parent 的提交
-        List<MergeConflict> conflictList = new ArrayList<>();                   // 所有有冲突的提交，每个记录所有有冲突的文件（不是冲突块），用于创建文件目录
-
         for (int i = 0; i < mergeCommits.size(); i++) {
             RevCommit commit = mergeCommits.get(i);
             if (i % 200 == 0) logger.info("commit progress: {} out of {} merge commits, {}%", i, mergeCommits.size(), i * 100.0 / mergeCommits.size());
-            mergeAndGetConflict(commit, conflictList);
+            mergeAndGetConflict(commit);
         }
     }
 
@@ -123,7 +118,7 @@ public class ConflictCollector {
         Files.write(filePath, Arrays.asList(content), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
     }
 
-    private void mergeAndGetConflict(RevCommit resolve, List<MergeConflict> conflictList) {
+    private void mergeAndGetConflict(RevCommit resolve) {
         RevCommit ours = resolve.getParents()[0];
         RevCommit theirs = resolve.getParents()[1];
 
@@ -177,7 +172,7 @@ public class ConflictCollector {
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.error("Failed to write conflict files", e);
         }
     }
 }
