@@ -2,18 +2,13 @@ package nju.merge.core;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.serializer.SerializerFeature;
-
-import nju.merge.core.align.DiffUtilsAligner;
-import nju.merge.core.align.DeepMergeAligner;
 import nju.merge.entity.ConflictFile;
 import nju.merge.entity.MergeConflict;
 import org.eclipse.jgit.diff.RawText;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.merge.MergeChunk;
 import org.eclipse.jgit.merge.MergeStrategy;
 import org.eclipse.jgit.merge.RecursiveMerger;
 import org.eclipse.jgit.merge.ThreeWayMerger;
-import org.eclipse.jgit.merge.MergeChunk.ConflictState;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ConflictCollector {
     private static final Logger logger = LoggerFactory.getLogger(ConflictCollector.class);
@@ -69,7 +65,9 @@ public class ConflictCollector {
         List<RevCommit> mergeCommits = GitService.getMergeCommits(repository);     // 所有有 2 个 parent 的提交
         List<MergeConflict> conflictList = new ArrayList<>();                   // 所有有冲突的提交，每个记录所有有冲突的文件（不是冲突块），用于创建文件目录
 
-        for (RevCommit commit : mergeCommits) {
+        for (int i = 0; i < mergeCommits.size(); i++) {
+            RevCommit commit = mergeCommits.get(i);
+            if (i % 200 == 0) logger.info("commit progress: {} out of {} merge commits, {}%", i, mergeCommits.size(), i * 100.0 / mergeCommits.size());
             mergeAndGetConflict(commit, conflictList);
         }
     }
@@ -89,24 +87,26 @@ public class ConflictCollector {
     }
 
     private void writeConflictFiles(String outputPath, List<ConflictFile> conflictFiles, String resolveHash) {
+        Path jsonPath = Paths.get(outputPath, projectName, resolveHash, "conflictFilesMetadata.json");
+        String jsonString = JSON.toJSONString(conflictFiles, SerializerFeature.PrettyFormat);
+        try {
+            writeContent(jsonPath, new String[]{jsonString});
+        } catch (IOException e) {
+            logger.error("Failed to write conflict files", e);
+        }
+
         for (ConflictFile conflictFile : conflictFiles) {
             String relativePath = conflictFile.filePath;
-//            logger.info("{} conflict chunks collected", conflictFile.conflictChunks.size());
             try {
                 // 创建基本目录路径
-                Path basePath = Paths.get(outputPath, projectName, resolveHash, relativePath);
-    
+                Path basePath = Paths.get(outputPath, projectName, resolveHash, relativePath.replace("/", ":"));
+
                 // 创建各个版本的目录和文件
                 writeContent(basePath.resolve("base"), conflictFile.baseContent);
                 writeContent(basePath.resolve("ours"), conflictFile.oursContent);
                 writeContent(basePath.resolve("theirs"), conflictFile.theirsContent);
-                writeContent(basePath.resolve("thuth"), conflictFile.resolvedContent);
-                writeContent(basePath.resolve("merged_generated_through_chunk"), conflictFile.mergedContent);
-
-                // 将对应文件的冲突块写入 metadata.json
-                // 使用 FastJSON 序列化
-                String jsonString = JSON.toJSONString(conflictFile, SerializerFeature.PrettyFormat);
-                writeContent(basePath.resolve("metadata.json"), new String[]{jsonString});
+                writeContent(basePath.resolve("truth"), conflictFile.resolvedContent);
+//                writeContent(basePath.resolve("merged_generated_through_chunk"), conflictFile.mergedContent);
 
             } catch (IOException e) {
                 logger.error("Failed to write conflict file: {}", relativePath, e);
@@ -131,96 +131,34 @@ public class ConflictCollector {
             if (!merger.merge(ours, theirs)) {                          // conflicts found
                 RecursiveMerger rMerger = (RecursiveMerger) merger;
                 RevCommit base = (RevCommit) rMerger.getBaseCommitId();
+                if (base == null) {
+                    // 不收集 base 为 null 的情况
+                    logger.error("base is null, {}, {}", projectName, resolve);
+                    return;
+                }
                 List<ConflictFile> conflictFiles = new ArrayList<>();
+                AtomicInteger processedFileCount = new AtomicInteger();
                 rMerger.getMergeResults().forEach((file, result) -> {           // result 有 chunk 属性，包含合并后文件的所有内容来源
+                    if (processedFileCount.get() % 100 == 0) logger.info("file progress: {} out of {} merge commits, {}%", processedFileCount.incrementAndGet(), rMerger.getMergeResults().size(), processedFileCount.get() * 100.0 / rMerger.getMergeResults().size());
                     if (isTargetFileType(file) && result.containsConflicts()) {
                         // 在这里记录文件内容，同时记录所有冲突块以及上下文
                         try {
-                            // resolvedContent 提取自 resove commit
+                            // resolvedContent 提取自 resolve commit
+                            // todo：是不是可以 track 到位置移动后的文件？
                             String[] resolvedContent = GitService.getFileContent(this.repository, resolve, file);
                             // 获取各文件内容
                             String[][] contents = new String[3][];
                             for (int i = 0; i < 3; i++) {
                                 contents[i] = new String(((RawText)result.getSequences().get(i)).getRawContent()).split("\n", -1);
                             }
-                            ArrayList<String> mergedContent = new ArrayList<>();
-                            if (base == null) {
-                                logger.error("base is null");
-                                logger.error("repo:{}", projectName);
-                                logger.error("resolve:{}", resolve);
-                                logger.error("file:{}", file);
-                                logger.error("--------------------");
-                                return;
-                            }
                             ConflictFile conflictFile = new ConflictFile(
                                 contents[0], contents[1], contents[2], 
                                 null, resolvedContent, resolve.getName(), base.getName(), ours.getName(), theirs.getName(), file, projectName
                             );
-
-                            // 获取到各个内容，根据 chunk 的内容，将冲突块标记出来，生成 conflictChunk，同时生成 mergedContent
-                            String[][] chunkContents = new String[3][];
-                            int startLine = -1, endLine = -1;
-                            for (MergeChunk chunk : result) {
-                                int srcIdx = chunk.getSequenceIndex();
-                                int begin = chunk.getBegin();
-                                int end = chunk.getEnd();
-                                if (begin > end) {
-                                    // ! 因为是 diff 的结果，所以可能会出现这种情况，说明是删除操作
-                                    begin = end;
-                                }
-                                ConflictState state = chunk.getConflictState();
-                                
-                                if (end < 0 || begin < 0) {
-                                    // writeContent(Paths.get("debug", "base"), contents[0]);
-                                    // writeContent(Paths.get("debug", "ours"), contents[1]);
-                                    // writeContent(Paths.get("debug", "theirs"), contents[2]);
-                                    // writeContent(Paths.get("debug", "resolved"), resolvedContent);
-                                    begin = end = 0;
-                                }
-                                if (begin > contents[srcIdx].length) {
-                                    logger.error("begin > contents[srcIdx].length");
-                                    logger.error("file:{}", file);
-                                    logger.error("project:{}", projectName);
-                                    logger.error("resolvedCommit:{}", resolve.getName());
-                                    logger.error("--------------------");
-                                    break;
-                                }
-                                if (state == ConflictState.NO_CONFLICT) {
-                                    mergedContent.addAll(Arrays.asList(contents[srcIdx]).subList(begin, end));
-                                    continue;
-                                }
-                                
-                                // 冲突块
-                                chunkContents[srcIdx] = Arrays.copyOfRange(contents[srcIdx], begin, end);
-                                if (state == ConflictState.FIRST_CONFLICTING_RANGE) {
-                                    startLine = mergedContent.size();
-                                    mergedContent.add("<<<<<<< ours");
-                                    mergedContent.addAll(Arrays.asList(chunkContents[srcIdx]));
-                                } else if (state == ConflictState.BASE_CONFLICTING_RANGE) {
-                                    mergedContent.add("||||||| base");
-                                    mergedContent.addAll(Arrays.asList(chunkContents[srcIdx]));
-                                } else if (state == ConflictState.NEXT_CONFLICTING_RANGE) {
-                                    mergedContent.add("=======");
-                                    mergedContent.addAll(Arrays.asList(chunkContents[srcIdx]));
-                                    mergedContent.add(">>>>>>> theirs");
-                                    endLine = mergedContent.size();
-                                    conflictFile.addConflictChunk(chunkContents[0], chunkContents[1], chunkContents[2], startLine, endLine);
-                                }
-                            }
-                            conflictFile.mergedContent = mergedContent.toArray(new String[0]);
-
-                            // 获取冲突块的 revolvedContent
-//                            DiffUtilsAligner.getResolutions(conflictFile);
-                            DeepMergeAligner.getResolutions(conflictFile);
-
                             conflictFiles.add(conflictFile);
                         } catch (IOException e) {
                             // most likely file not found
-                            logger.warn("Failed to get file content: " + file);
-                            logger.warn("Repo: " + projectName);
-                            logger.warn("Resolve: " + resolve.getName());
-                            logger.warn(e.getMessage());
-                            logger.warn("--------------------");
+                            logger.warn("file with no corresponding resolved file: {}, {}, {}", projectName, resolve, file);
                         }
                     }
                 });
