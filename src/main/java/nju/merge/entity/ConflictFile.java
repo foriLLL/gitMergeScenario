@@ -51,6 +51,10 @@ public class ConflictFile {
         this.conflictChunks.add(cc);
     }
 
+    public void addConflictChunk(ConflictChunk cc) {
+        this.conflictChunks.add(cc);
+    }
+
     @Override
     public String toString() {
         return "ConflictFile{" +

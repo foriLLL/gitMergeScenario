@@ -2,6 +2,7 @@ package nju.merge.core;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.serializer.SerializerFeature;
+import nju.merge.core.align.DeepMergeAligner;
 import nju.merge.entity.ConflictFile;
 import org.eclipse.jgit.diff.RawText;
 import org.eclipse.jgit.lib.Repository;
@@ -91,23 +92,23 @@ public class ConflictCollector {
             logger.error("Failed to write conflict files", e);
         }
 
-        for (ConflictFile conflictFile : conflictFiles) {
-            String relativePath = conflictFile.filePath;
-            try {
-                // 创建基本目录路径
-                Path basePath = Paths.get(outputPath, projectName, resolveHash, relativePath.replace("/", ":"));
-
-                // 创建各个版本的目录和文件
-                writeContent(basePath.resolve("base"), conflictFile.baseContent);
-                writeContent(basePath.resolve("ours"), conflictFile.oursContent);
-                writeContent(basePath.resolve("theirs"), conflictFile.theirsContent);
-                writeContent(basePath.resolve("truth"), conflictFile.resolvedContent);
-//                writeContent(basePath.resolve("merged_generated_through_chunk"), conflictFile.mergedContent);
-
-            } catch (IOException e) {
-                logger.error("Failed to write conflict file: {}", relativePath, e);
-            }
-        }
+//        for (ConflictFile conflictFile : conflictFiles) {
+//            String relativePath = conflictFile.filePath;
+//            try {
+//                // 创建基本目录路径
+//                Path basePath = Paths.get(outputPath, projectName, resolveHash, relativePath.replace("/", ":"));
+//
+//                // 创建各个版本的目录和文件
+//                writeContent(basePath.resolve("base"), conflictFile.baseContent);
+//                writeContent(basePath.resolve("ours"), conflictFile.oursContent);
+//                writeContent(basePath.resolve("theirs"), conflictFile.theirsContent);
+//                writeContent(basePath.resolve("truth"), conflictFile.resolvedContent);
+////                writeContent(basePath.resolve("merged_generated_through_chunk"), conflictFile.mergedContent);
+//
+//            } catch (IOException e) {
+//                logger.error("Failed to write conflict file: {}", relativePath, e);
+//            }
+//        }
     }
     
     private void writeContent(Path filePath, String[] content) throws IOException {
@@ -135,7 +136,7 @@ public class ConflictCollector {
                 List<ConflictFile> conflictFiles = new ArrayList<>();
                 AtomicInteger processedFileCount = new AtomicInteger();
                 rMerger.getMergeResults().forEach((file, result) -> {           // result 有 chunk 属性，包含合并后文件的所有内容来源
-                    if (processedFileCount.get() % 100 == 0) logger.info("file progress: {} out of {} merge commits, {}%", processedFileCount.incrementAndGet(), rMerger.getMergeResults().size(), processedFileCount.get() * 100.0 / rMerger.getMergeResults().size());
+//                    if (processedFileCount.get() % 200 == 0) logger.info("file progress: {} out of {} files, {}%", processedFileCount.incrementAndGet(), rMerger.getMergeResults().size(), processedFileCount.get() * 100.0 / rMerger.getMergeResults().size());
                     if (isTargetFileType(file) && result.containsConflicts()) {
                         // 在这里记录文件内容，同时记录所有冲突块以及上下文
                         try {
@@ -151,7 +152,11 @@ public class ConflictCollector {
                                 contents[0], contents[1], contents[2], 
                                 null, resolvedContent, resolve.getName(), base.getName(), ours.getName(), theirs.getName(), file, projectName
                             );
+
+                            DeepMergeAligner.getResolutions(conflictFile);
+
                             conflictFiles.add(conflictFile);
+
                         } catch (IOException e) {
                             // most likely file not found
                             logger.warn("file with no corresponding resolved file: {}, {}, {}", projectName, resolve, file);
