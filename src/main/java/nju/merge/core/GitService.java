@@ -87,6 +87,18 @@ public class GitService {
         );
 
         return out.toString(StandardCharsets.UTF_8).split("\n", -1);
+        // todo: 结果不和 Git 的结果一致，需要进一步调试
+        //    String baseContent = "a\nb\nc\nd\ne\nf\ng\nh\ni\n";
+        // String oursContent = "a\nb\n1\n2\n3\n6\nc\nd\ne\naaa\nf\nj\nk\nl\nm\n9\nxxx\ng\nh\nhhh\ni\n";
+        // String theirsContent = "a\nb\n4\n5\n6\nc\nd\ne\nf\n7\n8\n9\nxxx\ng\nh\ni\n";
+
+        // String[] out = GitService.getMergedContent(oursContent.split("\n", -1),
+        //         theirsContent.split("\n", -1), baseContent.split("\n",-1));
+
+        // String mergedContent = String.join("\n", out);
+        // // String mergedContent = String.join("\n", out).replace("\n", "\\n");
+        // System.out.println(mergedContent);
+        
     }
 
     public static List<RevCommit> getMergeCommits(Repository repository) throws Exception {

@@ -31,19 +31,35 @@ public class DeepMergeAligner extends Aligner{
                     cc.filePath = cf.filePath;
 
                     int start = i + 1;
+                    boolean illegalCase = false;
                     while (!merged[i].equals("||||||| BASE")) {
                         i++;
+                        if (i == merged.length) {
+                            illegalCase = true;
+                            break;
+                        }
                     }
+                    if (illegalCase) break;
                     String[] chunkOurs = Arrays.copyOfRange(merged, start, i++);
                     start = i;
                     while (!merged[i].equals("=======")) {
                         i++;
+                        if (i == merged.length) {
+                            illegalCase = true;
+                            break;
+                        }
                     }
+                    if (illegalCase) break;
                     String[] chunkBase = Arrays.copyOfRange(merged, start, i++);
                     start = i;
                     while (!merged[i].equals(">>>>>>> THEIRS")) {
                         i++;
+                        if (i == merged.length) {
+                            illegalCase = true;
+                            break;
+                        }
                     }
+                    if (illegalCase) break;
                     String[] chunkTheirs = Arrays.copyOfRange(merged, start, i++);
                     cc.endLine = i;
                     cc.ours = chunkOurs;
