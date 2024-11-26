@@ -1,7 +1,10 @@
 package nju.merge.client;
 
 import java.io.File;
+import java.util.concurrent.ExecutionException;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -9,6 +12,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import nju.merge.core.GitService;
+import nju.merge.core.align.DeepMergeAligner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.eclipse.jgit.api.Git;
@@ -17,6 +21,15 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.junit.jupiter.api.Test;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+
+import nju.merge.entity.ConflictFile;
+import java.io.File;
+import java.io.FileReader;
+import java.util.List;
+
+
 import nju.merge.utils.PathUtils;
 
 public class ClientTest {
@@ -24,18 +37,17 @@ public class ClientTest {
     private static final String reposDir = workdir + "repos";   // store all the repos
     private static final String outputDir = workdir + "output";
     private static final Logger logger = LoggerFactory.getLogger(ClientTest.class);
-    
     @Test
     public void collectTest() throws Exception {
 
-        String list_file = workdir + "100+stars_4GB-_multidev_org_lang.csv";
+        String list_file = workdir + "filtered_repos_100+stars_ssh_protocol.csv";
 
         HashMap<String, String> repos = new HashMap<>();
         Client.addReposFromText(list_file, repos);
 
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         // 创建固定大小的线程池
-        int threadPoolSize = 40; // 你想要的线程数量
+        int threadPoolSize = 4; // 你想要的线程数量
         ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
         AtomicInteger completedCnt = new AtomicInteger(0);
 
@@ -54,6 +66,101 @@ public class ClientTest {
         });
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+    }
+
+
+    public static List<ConflictFile> loadConflictFiles(String filePath) throws IOException {
+        // 读取文件内容为字符串
+        String content = new String(Files.readAllBytes(Paths.get(filePath)));
+
+        // 解析 JSON 数组为 ConflictFile 列表
+        return JSON.parseArray(content, ConflictFile.class);
+    }
+
+    private static List<File> getAllJsonFiles(File directory) {
+        List<File> jsonFiles = new ArrayList<>();
+        File[] files = directory.listFiles();
+
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    jsonFiles.addAll(getAllJsonFiles(file)); // 递归扫描子目录
+                } else if (file.isFile() && file.getName().endsWith(".json")) {
+                    jsonFiles.add(file); // 添加JSON文件
+                }
+            }
+        }
+        return jsonFiles;
+    }
+
+    private static boolean deleteRecursively(File file) {
+        if (file.isDirectory()) {
+            File[] files = file.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    deleteRecursively(f);
+                }
+            }
+        }
+        return file.delete();
+    }
+
+    @Test
+    public void tmp() throws ExecutionException, InterruptedException {
+        String directoryPath = "collect_output/output/conflictFiles";
+        List<File> jsonFiles = getAllJsonFiles(new File(directoryPath));
+        System.out.println("共有 " + jsonFiles.size() + " 个文件");
+
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        ExecutorService executorService = Executors.newFixedThreadPool(40);
+        AtomicInteger completedCnt = new AtomicInteger(0);
+        for (File file : jsonFiles) {
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                try {
+                    List<ConflictFile> cfs = loadConflictFiles(file.getAbsolutePath());
+                    
+                    boolean processed = false;
+                    for (ConflictFile cf : cfs) {
+                        if (!cf.conflictChunks.isEmpty()) {
+                            processed = true;
+                            break;
+                        }
+                        cf.mergedContent = GitService.getMergedContent(cf.oursContent, cf.theirsContent, cf.baseContent);
+                        DeepMergeAligner.getResolutions(cf);
+                    }
+                    if (processed) {
+                        int completed = completedCnt.incrementAndGet();
+                        if (completed % 100 == 0) System.out.println("Completed: " + completed + "/" + jsonFiles.size() + ", " + completed * 100.0 / jsonFiles.size() + "%");
+                        return;
+                    }
+
+                    // 将 cfs 覆盖写入 file
+                    String jsonString = JSON.toJSONString(cfs);
+                    Files.write(Paths.get(file.getAbsolutePath()), jsonString.getBytes());
+
+                    // 删除 file 同级目录下其他所有文件/目录
+                    File[] files = file.getParentFile().listFiles();
+                    if (files != null) {
+                        for (File f : files) {
+                            if (!f.getName().equals(file.getName())) {
+                                deleteRecursively(f);
+                            }
+                        }
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                int completed = completedCnt.incrementAndGet();
+                if (completed % 100 == 0) System.out.println("Completed: " + completed + "/" + jsonFiles.size() + ", " + completed * 100.0 / jsonFiles.size() + "%");
+            }, executorService);
+
+            futures.add(future);
+        }
+
+        // 等待所有任务完成
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
+
+        System.out.println("所有文件处理完成！");
     }
 
 
@@ -122,14 +229,15 @@ public class ClientTest {
     @Test
     public void diff3Test() throws IOException {
 
-        String baseContent = "Line 1\nLine 2\nLine 3\n";
-        String oursContent = "Line 1\nLine 2 modified\nLine 3\n";
-        String theirsContent = "Line 1\nLine 2\nLine 3 modified\n";
+        String baseContent = "a\nb\nc\nd\ne\nf\ng\nh\ni\n";
+        String oursContent = "a\nb\n1\n2\n3\n6\nc\nd\ne\naaa\nf\nj\nk\nl\nm\n9\nxxx\ng\nh\nhhh\ni\n";
+        String theirsContent = "a\nb\n4\n5\n6\nc\nd\ne\nf\n7\n8\n9\nxxx\ng\nh\ni\n";
 
         String[] out = GitService.getMergedContent(oursContent.split("\n", -1),
                 theirsContent.split("\n", -1), baseContent.split("\n",-1));
 
-        String mergedContent = String.join("\n", out).replace("\n", "\\n");
+        String mergedContent = String.join("\n", out);
+        // String mergedContent = String.join("\n", out).replace("\n", "\\n");
         System.out.println(mergedContent);
     }
 }
